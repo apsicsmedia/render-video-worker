@@ -1,0 +1,13 @@
+{
+  "name": "render-video-worker",
+  "version": "1.0.0",
+  "description": "A Node.js app using Puppeteer and FFmpeg for video rendering on Render",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "puppeteer": "^19.11.1"
+  }
+}
