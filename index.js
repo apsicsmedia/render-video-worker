@@ -49,3 +49,15 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+// New endpoint to download the slideshow video
+app.get('/download', (req, res) => {
+  const file = __dirname + '/slideshow.mp4';
+  res.download(file, 'slideshow.mp4', (err) => {
+    if (err) {
+      console.error("File download error:", err);
+      res.status(404).send('File not found');
+    }
+  });
+});
+
