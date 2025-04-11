@@ -60,4 +60,19 @@ app.get('/download', (req, res) => {
     }
   });
 });
+const { exec } = require("child_process");
+
+// New endpoint to trigger the video rendering script
+app.post('/trigger-render', (req, res) => {
+  // Run the render-video.sh script
+  exec("bash render-video.sh", (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Execution error: ${error}`);
+      return res.status(500).send(`Error executing render script: ${error}`);
+    }
+    // Send back the output
+    res.send(`Render script executed successfully. Output: ${stdout}`);
+  });
+});
+
 
