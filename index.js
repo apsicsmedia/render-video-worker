@@ -64,13 +64,13 @@ const { exec } = require("child_process");
 
 // New endpoint to trigger the video rendering script
 app.post('/trigger-render', (req, res) => {
-  // Run the render-video.sh script
+  console.log("Received /trigger-render POST request");
   exec("bash render-video.sh", (error, stdout, stderr) => {
     if (error) {
       console.error(`Execution error: ${error}`);
       return res.status(500).send(`Error executing render script: ${error}`);
     }
-    // Send back the output
+    console.log("Render script output:", stdout);
     res.send(`Render script executed successfully. Output: ${stdout}`);
   });
 });
