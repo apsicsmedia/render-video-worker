@@ -1,24 +1,52 @@
 #!/bin/bash
-# This script creates a slideshow video from images using FFmpeg.
-# It assumes that your images are named in a sequential pattern: image0.jpg, image1.jpg, etc.
+# render-video.sh - Create a slideshow video from images, merge with voiceover, and add captions.
 
-# Remove any existing fileList.txt to start fresh
+# Set image display duration (in seconds)
+DURATION=10
+
+# Remove any existing file list
 rm -f fileList.txt
 
-# Define the duration for each image (in seconds)
-DURATION=5
-
-# Loop through all JPEG images starting with "image"
+# Create fileList.txt from all images matching image*.jpg
 for img in image*.jpg; do
-  echo "file '$img'" >> fileList.txt
-  echo "duration $DURATION" >> fileList.txt
+  # Check if file exists and is non-empty
+  if [ -s "$img" ]; then
+    echo "file '$img'" >> fileList.txt
+    echo "duration $DURATION" >> fileList.txt
+  else
+    echo "Warning: $img not found or is empty." >&2
+  fi
 done
 
-# FFmpeg concat demuxer requires the last image to be repeated without a duration line.
+# FFmpeg requires the last image to be repeated without a duration line.
 LAST_IMG=$(ls image*.jpg | tail -n 1)
-echo "file '$LAST_IMG'" >> fileList.txt
+if [ -n "$LAST_IMG" ]; then
+  echo "file '$LAST_IMG'" >> fileList.txt
+else
+  echo "No images found. Exiting."
+  exit 1
+fi
 
-# Use FFmpeg to create a slideshow video
-ffmpeg -f concat -safe 0 -i fileList.txt -vsync vfr -pix_fmt yuv420p slideshow.mp4
+# Step 1: Generate slideshow video from images
+echo "Creating slideshow video from images..."
+ffmpeg -f concat -safe 0 -i fileList.txt -fps_mode vfr -pix_fmt yuv420p slideshow.mp4
 
-echo "Video slideshow created: slideshow.mp4"
+# Step 2: Merge audio (voiceover) if available.
+if [ -f voiceover.mp3 ]; then
+  echo "Merging voiceover audio into video..."
+  ffmpeg -i slideshow.mp4 -i voiceover.mp3 -c:v copy -c:a aac -shortest temp_video.mp4
+else
+  echo "Voiceover file (voiceover.mp3) not found, skipping audio merge."
+  cp slideshow.mp4 temp_video.mp4
+fi
+
+# Step 3: Add captions/subtitles if an SRT file is available.
+if [ -f captions.srt ]; then
+  echo "Adding captions from captions.srt..."
+  ffmpeg -i temp_video.mp4 -vf "subtitles=captions.srt" final_video.mp4
+else
+  echo "Captions file (captions.srt) not found, skipping caption overlay."
+  cp temp_video.mp4 final_video.mp4
+fi
+
+echo "Final video created: final_video.mp4"
