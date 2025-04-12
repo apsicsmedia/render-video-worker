@@ -1,6 +1,23 @@
 #!/bin/bash
 # render-video.sh - Create a slideshow video from images, merge with voiceover, and add captions.
 
+# Check if payload.json exists
+if [ -f payload.json ]; then
+  echo "Downloading images from payload..."
+  # Extract each image URL from the payload (assumes 'segments' is an array in the JSON)
+  IMAGE_COUNT=$(jq '.segments | length' payload.json)
+  for (( i=0; i<IMAGE_COUNT; i++ )); do
+    # Get image URL and set the output filename: image1.jpg, image2.jpg, etc.
+    URL=$(jq -r ".segments[$i].imageURL" payload.json)
+    OUTPUT="image$((i+1)).jpg"
+    echo "Downloading image from $URL to $OUTPUT"
+    curl -s -o "$OUTPUT" "$URL"
+  done
+else
+  echo "payload.json not found. Please ensure the payload file is available." >&2
+  exit 1
+fi
+
 # Set image display duration (in seconds)
 DURATION=10
 
