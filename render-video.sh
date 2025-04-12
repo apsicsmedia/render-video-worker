@@ -1,22 +1,28 @@
 #!/bin/bash
 # render-video.sh - Create a slideshow video from images, merge with voiceover, and add captions.
-# Usage: bash render-video.sh [payload_file_or_JSON_string]
+# This version checks if there’s piped input and writes it to 'payload.json'.
 
-# Enable nullglob so that non-matching globs return nothing.
 shopt -s nullglob
 
-# Determine the payload file:
+# Define the default payload file.
+PAYLOAD_FILE="payload.json"
+
+# Check if there is piped input (i.e. HTTP request body coming in).
+if [ ! -t 0 ]; then
+  # Read everything from STDIN and save it to payload.json.
+  cat > "$PAYLOAD_FILE"
+fi
+
+# If a command-line argument is provided, use it.
 if [ -n "$1" ]; then
   if [ -f "$1" ]; then
     PAYLOAD_FILE="$1"
   else
-    echo "$1" > payload.json
-    PAYLOAD_FILE="payload.json"
+    echo "$1" > "$PAYLOAD_FILE"
   fi
-else
-  PAYLOAD_FILE="payload.json"
 fi
 
+# Verify the payload file exists.
 if [ ! -f "$PAYLOAD_FILE" ]; then
   echo "Payload file '$PAYLOAD_FILE' not found. Exiting." >&2
   exit 1
@@ -43,10 +49,8 @@ echo "Extracting captions SRT from payload..."
 jq -r '.captionsSRT' "$PAYLOAD_FILE" > captions.srt
 
 # -------------------------
-# Remove any existing file list and create a new one.
+# Create fileList.txt for FFmpeg
 rm -f fileList.txt
-
-# Create fileList.txt from all images matching image*.jpg
 for img in image*.jpg; do
   if [ -s "$img" ]; then
     echo "file '$img'" >> fileList.txt
@@ -56,7 +60,6 @@ for img in image*.jpg; do
   fi
 done
 
-# FFmpeg requires the last image to be repeated without a duration line.
 LAST_IMG=$(ls image*.jpg 2>/dev/null | tail -n 1)
 if [ -n "$LAST_IMG" ]; then
   echo "file '$LAST_IMG'" >> fileList.txt
