@@ -1,22 +1,24 @@
 #!/bin/bash
 # render-video.sh - Create a slideshow video from images, merge with voiceover, and add captions.
-# Usage: bash render-video.sh [payload_file]
-# If no argument is provided, it defaults to 'payload.json'.
+# Usage: bash render-video.sh [payload_file_or_JSON_string]
 
-# Set payload file (default: payload.json)
-PAYLOAD_FILE=${1:-payload.json}
+# Enable nullglob so that non-matching globs return nothing.
+shopt -s nullglob
 
-# Set image display duration (in seconds)
-DURATION=10
-
-# If a payload JSON string is provided, it will be written to payload.json.
-
+# Determine the payload file:
 if [ -n "$1" ]; then
-  echo "$1" > payload.json
+  if [ -f "$1" ]; then
+    PAYLOAD_FILE="$1"
+  else
+    echo "$1" > payload.json
+    PAYLOAD_FILE="payload.json"
+  fi
+else
+  PAYLOAD_FILE="payload.json"
 fi
 
-if [ ! -f payload.json ]; then
-  echo "payload.json not found. Please ensure the payload file is available." >&2
+if [ ! -f "$PAYLOAD_FILE" ]; then
+  echo "Payload file '$PAYLOAD_FILE' not found. Exiting." >&2
   exit 1
 fi
 
@@ -41,14 +43,14 @@ echo "Extracting captions SRT from payload..."
 jq -r '.captionsSRT' "$PAYLOAD_FILE" > captions.srt
 
 # -------------------------
-# Remove any existing file list
+# Remove any existing file list and create a new one.
 rm -f fileList.txt
 
 # Create fileList.txt from all images matching image*.jpg
 for img in image*.jpg; do
   if [ -s "$img" ]; then
     echo "file '$img'" >> fileList.txt
-    echo "duration $DURATION" >> fileList.txt
+    echo "duration 10" >> fileList.txt
   else
     echo "Warning: $img not found or is empty." >&2
   fi
