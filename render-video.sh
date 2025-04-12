@@ -1,35 +1,39 @@
 #!/bin/bash
 # render-video.sh - Create a slideshow video from images, merge with voiceover, and add captions.
+# Usage: bash render-video.sh [payload_file]
+# If no argument is provided, it defaults to 'payload.json'.
+
+# Set payload file (default: payload.json)
+PAYLOAD_FILE=${1:-payload.json}
 
 # Set image display duration (in seconds)
 DURATION=10
 
-# -------------------------
-# Step 0: Download images from payload.json
-# -------------------------
-if [ -f payload.json ]; then
-  echo "Downloading images from payload..."
-  IMAGE_COUNT=$(jq '.segments | length' payload.json)
-  for (( i=0; i<IMAGE_COUNT; i++ )); do
-    URL=$(jq -r ".segments[$i].imageURL" payload.json)
-    OUTPUT="image$((i+1)).jpg"
-    echo "Downloading image from $URL to $OUTPUT"
-    curl -s -o "$OUTPUT" "$URL"
-  done
-else
-  echo "payload.json not found. Please ensure the payload file is available." >&2
+# Check if the payload file exists
+if [ ! -f "$PAYLOAD_FILE" ]; then
+  echo "$PAYLOAD_FILE not found. Please ensure the payload file is available." >&2
   exit 1
 fi
 
+echo "Using payload file: $PAYLOAD_FILE"
+
 # -------------------------
-# Step 1: Create captions.srt from payload.json
+# Step 0: Download images from the payload file
 # -------------------------
-if [ -f payload.json ]; then
-  echo "Extracting captions SRT from payload..."
-  jq -r '.captionsSRT' payload.json > captions.srt
-else
-  echo "payload.json not found. Captions will not be generated." >&2
-fi
+echo "Downloading images from payload..."
+IMAGE_COUNT=$(jq '.segments | length' "$PAYLOAD_FILE")
+for (( i=0; i<IMAGE_COUNT; i++ )); do
+  URL=$(jq -r ".segments[$i].imageURL" "$PAYLOAD_FILE")
+  OUTPUT="image$((i+1)).jpg"
+  echo "Downloading image from $URL to $OUTPUT"
+  curl -s -o "$OUTPUT" "$URL"
+done
+
+# -------------------------
+# Step 1: Create captions.srt from the payload file
+# -------------------------
+echo "Extracting captions SRT from payload..."
+jq -r '.captionsSRT' "$PAYLOAD_FILE" > captions.srt
 
 # -------------------------
 # Remove any existing file list
@@ -46,7 +50,7 @@ for img in image*.jpg; do
 done
 
 # FFmpeg requires the last image to be repeated without a duration line.
-LAST_IMG=$(ls image*.jpg | tail -n 1)
+LAST_IMG=$(ls image*.jpg 2>/dev/null | tail -n 1)
 if [ -n "$LAST_IMG" ]; then
   echo "file '$LAST_IMG'" >> fileList.txt
 else
