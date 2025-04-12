@@ -9,9 +9,14 @@ PAYLOAD_FILE=${1:-payload.json}
 # Set image display duration (in seconds)
 DURATION=10
 
-# Check if the payload file exists
-if [ ! -f "$PAYLOAD_FILE" ]; then
-  echo "$PAYLOAD_FILE not found. Please ensure the payload file is available." >&2
+# If a payload JSON string is provided, it will be written to payload.json.
+
+if [ -n "$1" ]; then
+  echo "$1" > payload.json
+fi
+
+if [ ! -f payload.json ]; then
+  echo "payload.json not found. Please ensure the payload file is available." >&2
   exit 1
 fi
 
