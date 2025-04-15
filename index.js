@@ -2,16 +2,16 @@ const express = require('express');
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const { exec } = require("child_process");
+const path = require('path');
 
 const app = express();
+
+// Middleware to parse JSON bodies.
+app.use(express.json());
 
 // Main test endpoint: Generates a screenshot using Puppeteer.
 app.get('/', async (req, res) => {
   try {
-    // Launch Puppeteer with enhanced options:
-    // - headless: "new" opts in to the new headless mode for improved stability.
-    // - --no-sandbox and --disable-setuid-sandbox: required in many cloud environments.
-    // - --disable-dev-shm-usage: reduces shared memory usage.
     const browser = await puppeteer.launch({
       headless: "new",
       args: [
@@ -22,7 +22,6 @@ app.get('/', async (req, res) => {
     });
     const page = await browser.newPage();
 
-    // Define a simple HTML page for testing.
     const html = `
       <!DOCTYPE html>
       <html>
@@ -49,16 +48,11 @@ app.get('/', async (req, res) => {
       </html>
     `;
 
-    // Set the page content and wait until all network requests have finished.
     await page.setContent(html, { waitUntil: 'networkidle0' });
-    
-    // Take a screenshot and save it as output.png.
     const screenshotPath = './output.png';
     await page.screenshot({ path: screenshotPath });
-
     await browser.close();
 
-    // Send a success response.
     res.send('✅ Screenshot created! Check the file output.png on the server.');
   } catch (err) {
     console.error('Error in GET /:', err);
@@ -68,7 +62,7 @@ app.get('/', async (req, res) => {
 
 // Endpoint to download the generated slideshow video.
 app.get('/download', (req, res) => {
-  const file = __dirname + '/slideshow.mp4';
+  const file = path.join(__dirname, 'slideshow.mp4');
   res.download(file, 'slideshow.mp4', (err) => {
     if (err) {
       console.error("File download error:", err);
@@ -77,17 +71,39 @@ app.get('/download', (req, res) => {
   });
 });
 
-// Endpoint to trigger the video rendering script.
+// Updated endpoint to trigger the video rendering script.
 app.post('/trigger-render', (req, res) => {
   console.log("Received /trigger-render POST request");
-  // Execute the render-video.sh script.
-  exec("bash render-video.sh", (error, stdout, stderr) => {
+
+  // Define the path for the payload file.
+  const payloadFile = path.join(__dirname, 'payload.json');
+
+  // Write the JSON payload from n8n to payload.json
+  try {
+    fs.writeFileSync(payloadFile, JSON.stringify(req.body, null, 2));
+    console.log(`Payload written to ${payloadFile}`);
+  } catch (err) {
+    console.error("Error writing payload:", err);
+    return res.status(500).send("Failed to write payload.");
+  }
+
+  // Immediately respond to the client so n8n doesn't time out.
+  res.send({ success: true, message: "Render job queued for processing." });
+
+  // Execute your render script asynchronously.
+  const scriptPath = path.join(__dirname, 'render-video.sh');
+  const command = `bash ${scriptPath} ${payloadFile}`;
+  console.log(`Executing command asynchronously: ${command}`);
+
+  exec(command, (error, stdout, stderr) => {
     if (error) {
-      console.error(`Execution error: ${error}`);
-      return res.status(500).send(`Error executing render script: ${error}`);
+      console.error(`Render script execution error: ${error}`);
+      // Optionally log or update a job status.
+      return;
     }
     console.log("Render script output:", stdout);
-    res.send(`Render script executed successfully. Output: ${stdout}`);
+    console.error("Render script errors:", stderr);
+    // Optionally, notify completion via another channel.
   });
 });
 
