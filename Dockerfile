@@ -1,14 +1,14 @@
 # Use the official Node.js 18 image as a base
 FROM node:18
 
-# Set DEBIAN_FRONTEND to noninteractive to avoid prompts during package installation
+# Set DEBIAN_FRONTEND to noninteractive to avoid prompts during installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Update packages and install FFmpeg, jq, libass, and additional libraries for Puppeteer/Chromium
+# Update packages and install FFmpeg, jq, libass9, and additional libraries for Puppeteer/Chromium
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     jq \
-    libass \
+    libass9 \
     ca-certificates \
     fonts-liberation \
     libappindicator3-1 \
