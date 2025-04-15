@@ -1,7 +1,7 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
 const fs = require('fs');
-const { exec } = require("child_process");
+const { spawn } = require("child_process");
 const path = require('path');
 
 const app = express();
@@ -90,20 +90,22 @@ app.post('/trigger-render', (req, res) => {
   // Immediately respond to the client so n8n doesn't time out.
   res.send({ success: true, message: "Render job queued for processing." });
 
-  // Execute your render script asynchronously.
+  // Execute your render script asynchronously using spawn.
   const scriptPath = path.join(__dirname, 'render-video.sh');
-  const command = `bash ${scriptPath} ${payloadFile}`;
-  console.log(`Executing command asynchronously: ${command}`);
+  const child = spawn("bash", [scriptPath, payloadFile]);
 
-  exec(command, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`Render script execution error: ${error}`);
-      // Optionally log or update a job status.
-      return;
-    }
-    console.log("Render script output:", stdout);
-    console.error("Render script errors:", stderr);
-    // Optionally, notify completion via another channel.
+  // Listen for stdout events.
+  child.stdout.on("data", (data) => {
+    console.log(`render-video.sh stdout: ${data}`);
+  });
+
+  // Listen for stderr events.
+  child.stderr.on("data", (data) => {
+    console.error(`render-video.sh stderr: ${data}`);
+  });
+
+  child.on("close", (code) => {
+    console.log(`render-video.sh process exited with code ${code}`);
   });
 });
 
