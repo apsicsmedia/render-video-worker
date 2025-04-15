@@ -1,6 +1,9 @@
 # Use the official Node.js 18 image as a base
 FROM node:18
 
+# Set DEBIAN_FRONTEND to noninteractive to avoid prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Update packages and install FFmpeg, jq, libass, and additional libraries for Puppeteer/Chromium
 RUN apt-get update && apt-get install -y \
     ffmpeg \
@@ -30,7 +33,7 @@ RUN apt-get update && apt-get install -y \
     libxtst6 \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
-    
+
 # Set the working directory
 WORKDIR /app
 
