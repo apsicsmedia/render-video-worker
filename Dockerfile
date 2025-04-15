@@ -1,9 +1,10 @@
 # Use the official Node.js 18 image as a base
 FROM node:18
 
-# Update packages and install FFmpeg and additional libraries for Puppeteer/Chromium
+# Update packages and install FFmpeg, jq, and additional libraries for Puppeteer/Chromium
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    jq \
     ca-certificates \
     fonts-liberation \
     libappindicator3-1 \
