@@ -1,34 +1,47 @@
 #!/bin/bash
-echo "DEBUG: render-video.sh script started!" # <-- Added
+echo "DEBUG: render-video.sh script started!"
 
 shopt -s nullglob
-PAYLOAD_FILE="payload.json"
 
-echo "DEBUG: Checking for piped input..." # <-- Added
-if [ ! -t 0 ]; then
-  echo "DEBUG: Piped input detected. Reading stdin to $PAYLOAD_FILE..." # <-- Added
-  cat > "$PAYLOAD_FILE"
-  echo "DEBUG: Finished reading stdin. Payload size: $(wc -c < $PAYLOAD_FILE) bytes." # <-- Added
+# Determine payload file: if a command-line argument is provided, use it; otherwise, default to payload.json.
+if [ -n "$1" ]; then
+  if [ -f "$1" ]; then
+    PAYLOAD_FILE="$1"
+    echo "DEBUG: Payload file provided as argument exists: $PAYLOAD_FILE"
+  else
+    echo "$1" > payload.json
+    PAYLOAD_FILE="payload.json"
+    echo "DEBUG: Payload argument provided, but file not found. Written to payload.json"
+  fi
 else
-  echo "DEBUG: No piped input detected (stdin is a TTY)." # <-- Added
+  PAYLOAD_FILE="payload.json"
+  # Only read from STDIN if no argument is provided.
+  echo "DEBUG: No payload argument provided. Checking for piped input..."
+  if [ ! -t 0 ]; then
+    echo "DEBUG: Piped input detected. Reading stdin to $PAYLOAD_FILE..."
+    cat > "$PAYLOAD_FILE"
+    echo "DEBUG: Finished reading stdin. Payload size: $(wc -c < $PAYLOAD_FILE) bytes."
+  else
+    echo "DEBUG: No piped input detected (stdin is a TTY)."
+  fi
 fi
 
-# Add a small delay just in case logs need time to flush
+# Add a small delay to ensure logs flush
 sleep 1
-echo "DEBUG: Verifying payload file existence..." # <-- Added
+echo "DEBUG: Verifying payload file existence..."
 if [ ! -f "$PAYLOAD_FILE" ]; then
   echo "DEBUG: Payload file '$PAYLOAD_FILE' not found. Exiting." >&2
   exit 1
 fi
-echo "DEBUG: Payload file $PAYLOAD_FILE exists." # <-- Added confirmation
+echo "DEBUG: Payload file $PAYLOAD_FILE exists."
 echo "Using payload file: $PAYLOAD_FILE"
 
-echo "DEBUG: Checking jq command..." # <-- Added
+echo "DEBUG: Checking jq command..."
 if ! command -v jq &> /dev/null; then
     echo "DEBUG: jq command could not be found. Exiting." >&2
     exit 1
 fi
-echo "DEBUG: jq seems available." # <-- Added
+echo "DEBUG: jq seems available."
 
 # -------------------------
 # Step 0: Download images from the payload file
@@ -40,9 +53,9 @@ for (( i=0; i<IMAGE_COUNT; i++ )); do
   URL=$(jq -r ".segments[$i].imageURL" "$PAYLOAD_FILE")
   OUTPUT="image$((i+1)).jpg"
   echo "DEBUG: Downloading image $((i+1)) from $URL to $OUTPUT"
-  curl -s -L -o "$OUTPUT" "$URL"  # Added -L to follow redirects
+  curl -s -L -o "$OUTPUT" "$URL"
   if [ ! -s "$OUTPUT" ]; then
-       echo "DEBUG: WARNING - Failed to download or image $((i+1)) is empty: $URL" >&2
+    echo "DEBUG: WARNING - Failed to download or image $((i+1)) is empty: $URL" >&2
   fi
 done
 echo "DEBUG: Finished Step 0."
@@ -85,7 +98,7 @@ echo "DEBUG: Finished creating fileList.txt."
 # -------------------------
 echo "DEBUG: Starting Step 2: Generate slideshow (FFmpeg concat)..."
 ffmpeg -f concat -safe 0 -i fileList.txt -vf "fps=30,format=yuv420p" -c:v libx264 -preset fast slideshow.mp4
-if [ $? -ne 0 ]; then 
+if [ $? -ne 0 ]; then
   echo "DEBUG: ERROR during slideshow generation (ffmpeg concat)." >&2
   exit 1
 fi
@@ -98,7 +111,7 @@ echo "DEBUG: Starting Step 3: Check for audio..."
 if [ -f voiceover.mp3 ]; then
   echo "DEBUG: voiceover.mp3 found. Merging audio (FFmpeg merge)..."
   ffmpeg -i slideshow.mp4 -i voiceover.mp3 -c:v copy -c:a aac -shortest temp_video.mp4
-  if [ $? -ne 0 ]; then 
+  if [ $? -ne 0 ]; then
     echo "DEBUG: ERROR during audio merge (ffmpeg)." >&2
     exit 1
   fi
@@ -115,7 +128,7 @@ echo "DEBUG: Starting Step 4: Check for captions..."
 if [ -f captions.srt ] && [ -s captions.srt ]; then
   echo "DEBUG: captions.srt found. Adding captions (FFmpeg subtitles)..."
   ffmpeg -i temp_video.mp4 -vf "subtitles=captions.srt:force_style='Fontsize=18,PrimaryColour=&H00FFFFFF,BorderStyle=3,Outline=1,Shadow=0'" final_video.mp4
-  if [ $? -ne 0 ]; then 
+  if [ $? -ne 0 ]; then
     echo "DEBUG: ERROR during caption overlay (ffmpeg)." >&2
     exit 1
   fi
