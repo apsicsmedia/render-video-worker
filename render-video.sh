@@ -1,8 +1,7 @@
 #!/bin/bash
-echo "DEBUG: render-video.sh script started!"
 shopt -s nullglob
 
-# Payload setup
+# Payload
 if [ -n "$1" ]; then
   if [ -f "$1" ]; then
     PAYLOAD_FILE="$1"
@@ -16,12 +15,12 @@ else
 fi
 
 sleep 1
-if [ ! -f "$PAYLOAD_FILE" ]; then echo "Payload missing"; exit 1; fi
+if [ ! -f "$PAYLOAD_FILE" ]; then exit 1; fi
 
-# jq check
-if ! command -v jq &> /dev/null; then echo "jq not found"; exit 1; fi
+# Check jq
+if ! command -v jq &> /dev/null; then exit 1; fi
 
-# Step 0: Download images
+# Download images
 IMAGE_COUNT=$(jq '.segments | length' "$PAYLOAD_FILE")
 for (( i=0; i<IMAGE_COUNT; i++ )); do
   URL=$(jq -r ".segments[$i].imageURL" "$PAYLOAD_FILE")
@@ -29,12 +28,10 @@ for (( i=0; i<IMAGE_COUNT; i++ )); do
   curl -s -L -o "$OUTPUT" "$URL"
 done
 
-# Step 1: Create captions.srt
+# Create captions.srt
 jq -r '.captionsSRT' "$PAYLOAD_FILE" > captions.srt
-echo "DEBUG: Contents of captions.srt:"
-cat captions.srt
 
-# Step 2: Create fileList.txt
+# Build file list
 rm -f fileList.txt
 for img in image*.jpg; do
   echo "file '$img'" >> fileList.txt
@@ -42,3 +39,30 @@ for img in image*.jpg; do
 done
 LAST_IMG=$(ls image*.jpg | tail -n 1)
 echo "file '$LAST_IMG'" >> fileList.txt
+
+# Create slideshow
+ffmpeg -loglevel error -y -f concat -safe 0 -i fileList.txt \
+  -vf "fps=30,scale=in_range=full:out_range=tv,format=yuv420p" \
+  -c:v libx264 -preset medium slideshow.mp4
+
+# Merge voiceover
+if [ -f voiceover.mp3 ]; then
+  ffmpeg -loglevel error -y -i slideshow.mp4 -i voiceover.mp3 -c:v copy -c:a aac -shortest temp_video.mp4
+else
+  cp slideshow.mp4 temp_video.mp4
+fi
+
+# Burn subtitles
+if [ -s captions.srt ]; then
+  ffmpeg -loglevel error -y -i temp_video.mp4 \
+    -vf "subtitles=captions.srt:charenc=UTF-8:force_style='FontName=Impact,FontSize=42,PrimaryColour=&H00FFFF00&,OutlineColour=&H00000000&,BackColour=&H64000000&,BorderStyle=1,Outline=3,Shadow=0,Alignment=2,MarginV=50',setpts=PTS-STARTPTS,format=yuv420p" \
+    -af "asetpts=PTS-STARTPTS" \
+    -c:v libx264 -preset medium -c:a aac -shortest final_video.mp4
+else
+  ffmpeg -loglevel error -y -i temp_video.mp4 \
+    -vf "setpts=PTS-STARTPTS,format=yuv420p" \
+    -af "asetpts=PTS-STARTPTS" \
+    -c:v libx264 -preset medium -c:a aac -shortest final_video.mp4
+fi
+
+echo "SUCCESS: final_video.mp4 created"
