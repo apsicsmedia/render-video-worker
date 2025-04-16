@@ -101,7 +101,7 @@ echo "DEBUG: Finished creating fileList.txt."
 # Step 2: Generate slideshow video from images
 # -------------------------
 echo "DEBUG: Starting Step 2: Generate slideshow (FFmpeg concat)..."
-ffmpeg -f concat -safe 0 -i fileList.txt -vf "fps=30,format=yuv420p" -c:v libx264 -preset fast slideshow.mp4
+ffmpeg -f concat -safe 0 -i fileList.txt -vf "fps=30,format=yuv420p" -c:v libx264 -preset medium slideshow.mp4
 if [ $? -ne 0 ]; then
   echo "DEBUG: ERROR during slideshow generation (ffmpeg concat)." >&2
   exit 1
