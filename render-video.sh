@@ -121,13 +121,12 @@ else
 fi
 echo "DEBUG: Finished Step 3."
 
-# -------------------------
 # Step 4: Add captions/subtitles if an SRT file is available.
 # -------------------------
 echo "DEBUG: Starting Step 4: Check for captions..."
 if [ -f captions.srt ] && [ -s captions.srt ]; then
   echo "DEBUG: captions.srt found. Adding captions (FFmpeg subtitles)..."
-  ffmpeg -i temp_video.mp4 -vf "subtitles=captions.srt:force_style='Fontsize=18,PrimaryColour=&H00FFFFFF,BorderStyle=3,Outline=1,Shadow=0'" final_video.mp4
+  ffmpeg -i temp_video.mp4 -vf "subtitles=/app/captions.srt" final_video.mp4
   if [ $? -ne 0 ]; then
     echo "DEBUG: ERROR during caption overlay (ffmpeg)." >&2
     exit 1
