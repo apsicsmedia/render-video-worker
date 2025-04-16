@@ -131,7 +131,7 @@ echo "DEBUG: Finished Step 3."
 echo "DEBUG: Starting Step 4: Check for captions..."
 if [ -f captions.srt ] && [ -s captions.srt ]; then
   echo "DEBUG: captions.srt found. Adding captions and resetting timestamps..."
-  ffmpeg -i temp_video.mp4 -vf "setpts=PTS-STARTPTS,subtitles=/app/captions.srt" -af "asetpts=PTS-STARTPTS" final_video.mp4
+ ffmpeg -i temp_video.mp4 -vf "setpts=PTS-STARTPTS,subtitles=captions.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,BorderStyle=4,OutlineColour=&H000000FF,Shadow=0,BackColour=&H80000000,Bold=1'" -af "asetpts=PTS-STARTPTS" final_video.mp4
   if [ $? -ne 0 ]; then
     echo "DEBUG: ERROR during caption overlay (ffmpeg)." >&2
     exit 1
