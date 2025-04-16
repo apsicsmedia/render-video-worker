@@ -20,7 +20,7 @@ else
   if [ ! -t 0 ]; then
     echo "DEBUG: Piped input detected. Reading stdin to $PAYLOAD_FILE..."
     cat > "$PAYLOAD_FILE"
-    echo "DEBUG: Finished reading stdin. Payload size: $(wc -c < $PAYLOAD_FILE) bytes."
+    echo "DEBUG: Finished reading stdin. Payload size: $(wc -c < "$PAYLOAD_FILE") bytes."
   else
     echo "DEBUG: No piped input detected (stdin is a TTY)."
   fi
@@ -49,6 +49,7 @@ echo "DEBUG: jq seems available."
 echo "DEBUG: Starting Step 0: Download images..."
 IMAGE_COUNT=$(jq '.segments | length' "$PAYLOAD_FILE")
 echo "DEBUG: Found $IMAGE_COUNT segments in payload."
+
 for (( i=0; i<IMAGE_COUNT; i++ )); do
   URL=$(jq -r ".segments[$i].imageURL" "$PAYLOAD_FILE")
   OUTPUT="image$((i+1)).jpg"
@@ -58,6 +59,7 @@ for (( i=0; i<IMAGE_COUNT; i++ )); do
     echo "DEBUG: WARNING - Failed to download or image $((i+1)) is empty: $URL" >&2
   fi
 done
+
 echo "DEBUG: Finished Step 0."
 
 # -------------------------
@@ -88,6 +90,7 @@ for img in image*.jpg; do
   fi
 done
 
+# Duplicate the last image so the concat demuxer doesn't end abruptly
 LAST_IMG=$(ls image*.jpg 2>/dev/null | tail -n 1)
 if [ -n "$LAST_IMG" ]; then
   echo "file '$LAST_IMG'" >> fileList.txt
@@ -126,26 +129,47 @@ fi
 echo "DEBUG: Finished Step 3."
 
 # -------------------------
-# Step 4: Add captions/subtitles if an SRT file is available and reset timestamps to start at 0
+# Step 3.5: Remove container offset (Method #2 remux)
+# -------------------------
+echo "DEBUG: Step 3.5: Removing offset from temp_video.mp4 via TS remux..."
+ffmpeg -y -i temp_video.mp4 -c copy -bsf:v h264_mp4toannexb -f mpegts intermediate.ts
+if [ $? -ne 0 ]; then
+  echo "DEBUG: ERROR during .ts creation." >&2
+  exit 1
+fi
+
+ffmpeg -y -i intermediate.ts -c copy offset_fixed.mp4
+if [ $? -ne 0 ]; then
+  echo "DEBUG: ERROR remuxing back to offset_fixed.mp4." >&2
+  exit 1
+fi
+echo "DEBUG: offset_fixed.mp4 should now start at 0s."
+echo "DEBUG: Finished Step 3.5."
+
+# -------------------------
+# Step 4: Burn subtitles if an SRT file is available
 # -------------------------
 echo "DEBUG: Starting Step 4: Check for captions..."
 if [ -f captions.srt ] && [ -s captions.srt ]; then
-  echo "DEBUG: captions.srt found. Adding captions and resetting timestamps..."
- ffmpeg -i temp_video.mp4 -vf "setpts=PTS-STARTPTS,subtitles=captions.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,BorderStyle=4,OutlineColour=&H000000FF,Shadow=0,BackColour=&H80000000,Bold=1'" -af "asetpts=PTS-STARTPTS" final_video.mp4
+  echo "DEBUG: captions.srt found. Burning subtitles..."
+  ffmpeg -i offset_fixed.mp4 \
+    -vf "subtitles=captions.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,BorderStyle=4,OutlineColour=&H000000FF,Shadow=0,BackColour=&H80000000,Bold=1'" \
+    -c:a aac -shortest \
+    final_video.mp4
   if [ $? -ne 0 ]; then
-    echo "DEBUG: ERROR during caption overlay (ffmpeg)." >&2
+    echo "DEBUG: ERROR during subtitle burn-in (ffmpeg)." >&2
     exit 1
   fi
 else
-  echo "DEBUG: Captions file (captions.srt) not found or empty, resetting timestamps and copying temp_video.mp4 to final_video.mp4."
-  ffmpeg -i temp_video.mp4 -vf "setpts=PTS-STARTPTS" -af "asetpts=PTS-STARTPTS" final_video.mp4
+  echo "DEBUG: Captions file (captions.srt) not found or empty. Copying offset_fixed.mp4 to final_video.mp4."
+  ffmpeg -i offset_fixed.mp4 -c copy final_video.mp4
 fi
 echo "DEBUG: Finished Step 4."
 
 echo "DEBUG: Final video created: final_video.mp4"
 echo "Final video created: final_video.mp4"
 
-# Optional: Clean up intermediate files
+# Optional: Clean up intermediate files (uncomment if desired)
 # echo "DEBUG: Cleaning up temporary files..."
-# rm -f image*.jpg captions.srt fileList.txt slideshow.mp4 temp_video.mp4 payload.json
+# rm -f image*.jpg captions.srt fileList.txt slideshow.mp4 temp_video.mp4 intermediate.ts offset_fixed.mp4 payload.json
 # echo "DEBUG: Cleanup complete."
