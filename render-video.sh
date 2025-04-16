@@ -42,30 +42,3 @@ for img in image*.jpg; do
 done
 LAST_IMG=$(ls image*.jpg | tail -n 1)
 echo "file '$LAST_IMG'" >> fileList.txt
-
-# Step 3: Create slideshow with range fix
-ffmpeg -y -f concat -safe 0 -i fileList.txt \
-  -vf "fps=30,scale=in_range=full:out_range=tv,format=yuv420p" \
-  -c:v libx264 -preset medium slideshow.mp4
-
-# Step 4: Merge voiceover
-if [ -f voiceover.mp3 ]; then
-  ffmpeg -y -i slideshow.mp4 -i voiceover.mp3 -c:v copy -c:a aac -shortest temp_video.mp4
-else
-  cp slideshow.mp4 temp_video.mp4
-fi
-
-# Step 5: Burn subtitles + re-encode clean start + format fix
-if [ -s captions.srt ]; then
-  ffmpeg -y -i temp_video.mp4 \
-    -vf "subtitles=captions.srt:charenc=UTF-8,setpts=PTS-STARTPTS,format=yuv420p" \
-    -af "asetpts=PTS-STARTPTS" \
-    -c:v libx264 -preset medium -c:a aac -shortest final_video.mp4
-else
-  ffmpeg -y -i temp_video.mp4 \
-    -vf "setpts=PTS-STARTPTS,format=yuv420p" \
-    -af "asetpts=PTS-STARTPTS" \
-    -c:v libx264 -preset medium -c:a aac -shortest final_video.mp4
-fi
-
-echo "SUCCESS: final_video.mp4 created"
