@@ -1,6 +1,5 @@
 #!/bin/bash
 echo "DEBUG: render-video.sh script started!"
-
 shopt -s nullglob
 
 # Determine payload file
@@ -25,26 +24,23 @@ else
   fi
 fi
 
-# Add a small delay to ensure logs flush
 sleep 1
 echo "DEBUG: Verifying payload file existence..."
 if [ ! -f "$PAYLOAD_FILE" ]; then
   echo "DEBUG: Payload file '$PAYLOAD_FILE' not found. Exiting." >&2
   exit 1
 fi
+
 echo "DEBUG: Payload file $PAYLOAD_FILE exists."
-echo "Using payload file: $PAYLOAD_FILE"
 
 echo "DEBUG: Checking jq command..."
 if ! command -v jq &> /dev/null; then
-    echo "DEBUG: jq command could not be found. Exiting." >&2
-    exit 1
+  echo "DEBUG: jq command could not be found. Exiting." >&2
+  exit 1
 fi
 echo "DEBUG: jq seems available."
 
-# -------------------------
-# Step 0: Download images from the payload file
-# -------------------------
+# Step 0: Download images
 echo "DEBUG: Starting Step 0: Download images..."
 IMAGE_COUNT=$(jq '.segments | length' "$PAYLOAD_FILE")
 echo "DEBUG: Found $IMAGE_COUNT segments in payload."
@@ -59,24 +55,17 @@ for (( i=0; i<IMAGE_COUNT; i++ )); do
   fi
 done
 
-echo "DEBUG: Finished Step 0."
-
-# -------------------------
 # Step 1: Create captions.srt
-# -------------------------
 echo "DEBUG: Starting Step 1: Create captions.srt..."
 jq -r '.captionsSRT' "$PAYLOAD_FILE" > captions.srt
 if [ ! -s captions.srt ]; then
   echo "DEBUG: WARNING - captions.srt file is empty or not created." >&2
 fi
 echo "DEBUG: Finished Step 1."
-
 echo "DEBUG: Contents of captions.srt:"
 cat captions.srt
 
-# -------------------------
-# Step 2: Create fileList.txt for FFmpeg
-# -------------------------
+# Step 2: Create fileList.txt
 echo "DEBUG: Creating fileList.txt..."
 rm -f fileList.txt
 for img in image*.jpg; do
@@ -87,31 +76,23 @@ for img in image*.jpg; do
     echo "DEBUG: Warning: $img not found or is empty." >&2
   fi
 done
-
 LAST_IMG=$(ls image*.jpg 2>/dev/null | tail -n 1)
 if [ -n "$LAST_IMG" ]; then
-  # Repeat the last image to avoid abrupt ending
   echo "file '$LAST_IMG'" >> fileList.txt
 else
   echo "DEBUG: No valid images found. Exiting." >&2
   exit 1
 fi
-echo "DEBUG: Finished creating fileList.txt."
 
-# -------------------------
-# Step 3: Generate slideshow video
-# -------------------------
+# Step 3: Generate slideshow
 echo "DEBUG: Starting Step 3: Generate slideshow..."
 ffmpeg -f concat -safe 0 -i fileList.txt -vf "fps=30,format=yuv420p" -c:v libx264 -preset medium slideshow.mp4
 if [ $? -ne 0 ]; then
   echo "DEBUG: ERROR generating slideshow (ffmpeg concat)." >&2
   exit 1
 fi
-echo "DEBUG: Finished Step 3."
 
-# -------------------------
-# Step 4: Merge audio (voiceover) if available -> temp_video.mp4
-# -------------------------
+# Step 4: Merge audio
 echo "DEBUG: Starting Step 4: Merge audio if voiceover.mp3 exists..."
 if [ -f voiceover.mp3 ]; then
   echo "DEBUG: voiceover.mp3 found. Merging..."
@@ -124,17 +105,14 @@ else
   echo "DEBUG: No voiceover found. Copying slideshow.mp4 to temp_video.mp4."
   cp slideshow.mp4 temp_video.mp4
 fi
-echo "DEBUG: Finished Step 4."
 
-# -------------------------
-# Step 5: Re-encode so final starts at 0s & optionally burn subtitles
-# -------------------------
-echo "DEBUG: Starting Step 5: Force final to 0s and handle subtitles..."
+# Step 5: Burn subtitles and force start at 0s
+echo "DEBUG: Starting Step 5: Burn subtitles if available..."
 
 if [ -f captions.srt ] && [ -s captions.srt ]; then
-  echo "DEBUG: SRT found, burning subtitles with setpts/asetpts re-encode..."
-  ffmpeg -i temp_video.mp4 \
-    -vf "subtitles=captions.srt,setpts=PTS-STARTPTS" \
+  echo "DEBUG: Subtitles found. Burning with charenc=UTF-8..."
+  ffmpeg -loglevel debug -i temp_video.mp4 \
+    -vf "subtitles=captions.srt:charenc=UTF-8,setpts=PTS-STARTPTS" \
     -af "asetpts=PTS-STARTPTS" \
     -c:v libx264 -preset medium \
     -c:a aac -shortest \
@@ -144,7 +122,7 @@ if [ -f captions.srt ] && [ -s captions.srt ]; then
     exit 1
   fi
 else
-  echo "DEBUG: No valid SRT. We'll still re-encode to ensure 0s start."
+  echo "DEBUG: No valid SRT. Re-encoding without subtitles..."
   ffmpeg -i temp_video.mp4 \
     -vf "setpts=PTS-STARTPTS" \
     -af "asetpts=PTS-STARTPTS" \
@@ -153,15 +131,4 @@ else
     final_video.mp4
 fi
 
-if [ $? -ne 0 ]; then
-  echo "DEBUG: ERROR re-encoding final video." >&2
-  exit 1
-fi
-
-echo "DEBUG: Finished Step 5."
-
 echo "DEBUG: Final video created: final_video.mp4"
-echo "Final video created: final_video.mp4"
-
-# Optional: Clean up intermediate files (uncomment to enable)
-# rm -f image*.jpg fileList.txt slideshow.mp4 temp_video.mp4 captions.srt payload.json
