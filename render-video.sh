@@ -43,17 +43,23 @@ TOTAL_FRAMES=$((DURATION * FPS))
 for img in image*.jpg; do
   BASENAME=$(basename "$img" .jpg)
   ffmpeg -loglevel error -y -loop 1 -t $DURATION -i "$img" \
-    -vf "zoompan=z='min(zoom+0.0005,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=$TOTAL_FRAMES:s=$RES, fps=$FPS,format=yuv420p" \
-    -c:v libx264 -preset fast "motion_clips/${BASENAME}.mp4"
+    -filter_complex "
+      [0:v]scale=2400:1350,
+      zoompan=z='1.002':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=$TOTAL_FRAMES,
+      scale=$RES:force_original_aspect_ratio=decrease,
+      pad=$RES:(ow-iw)/2:(oh-ih)/2,
+      format=yuv420p
+    " \
+    -c:v libx264 -t $DURATION -preset veryfast "motion_clips/${BASENAME}.mp4"
 done
 
-# Create list for concatenation
+# Build file list
 rm -f fileList.txt
 for vid in motion_clips/*.mp4; do
   echo "file '$vid'" >> fileList.txt
 done
 
-# Concatenate all motion clips
+# Concatenate all clips into slideshow
 ffmpeg -loglevel error -y -f concat -safe 0 -i fileList.txt -c copy slideshow.mp4
 
 # Merge voiceover
@@ -63,7 +69,7 @@ else
   cp slideshow.mp4 temp_video.mp4
 fi
 
-# Burn subtitles with Roboto style
+# Burn styled subtitles (Roboto, white, black background, 75% opacity)
 if [ -s captions.srt ]; then
   ffmpeg -loglevel error -y -i temp_video.mp4 \
     -vf "subtitles=captions.srt:charenc=UTF-8:force_style='FontName=Roboto,FontSize=48,PrimaryColour=&H00FFFFFF,OutlineColour=&H40000000,BorderStyle=3,Alignment=2,MarginV=60',setpts=PTS-STARTPTS,format=yuv420p" \
