@@ -70,6 +70,10 @@ if [ ! -s captions.srt ]; then
 fi
 echo "DEBUG: Finished Step 1."
 
+# Log the contents of captions.srt for verification.
+echo "DEBUG: Contents of captions.srt:"
+cat captions.srt
+
 # -------------------------
 # Create fileList.txt for FFmpeg
 # -------------------------
@@ -121,19 +125,20 @@ else
 fi
 echo "DEBUG: Finished Step 3."
 
-# Step 4: Add captions/subtitles if an SRT file is available.
+# -------------------------
+# Step 4: Add captions/subtitles if an SRT file is available and reset timestamps to start at 0
 # -------------------------
 echo "DEBUG: Starting Step 4: Check for captions..."
 if [ -f captions.srt ] && [ -s captions.srt ]; then
-  echo "DEBUG: captions.srt found. Adding captions (FFmpeg subtitles)..."
-  ffmpeg -i temp_video.mp4 -vf "subtitles=/app/captions.srt" final_video.mp4
+  echo "DEBUG: captions.srt found. Adding captions and resetting timestamps..."
+  ffmpeg -i temp_video.mp4 -vf "setpts=PTS-STARTPTS,subtitles=/app/captions.srt" -af "asetpts=PTS-STARTPTS" final_video.mp4
   if [ $? -ne 0 ]; then
     echo "DEBUG: ERROR during caption overlay (ffmpeg)." >&2
     exit 1
   fi
 else
-  echo "DEBUG: Captions file (captions.srt) not found or empty, copying temp_video.mp4 to final_video.mp4."
-  cp temp_video.mp4 final_video.mp4
+  echo "DEBUG: Captions file (captions.srt) not found or empty, resetting timestamps and copying temp_video.mp4 to final_video.mp4."
+  ffmpeg -i temp_video.mp4 -vf "setpts=PTS-STARTPTS" -af "asetpts=PTS-STARTPTS" final_video.mp4
 fi
 echo "DEBUG: Finished Step 4."
 
