@@ -5,11 +5,9 @@ const { spawn } = require("child_process");
 const path = require('path');
 
 const app = express();
-
-// Middleware to parse JSON bodies.
 app.use(express.json());
 
-// Main test endpoint: Generates a screenshot using Puppeteer.
+// Main test endpoint
 app.get('/', async (req, res) => {
   try {
     const browser = await puppeteer.launch({
@@ -20,8 +18,8 @@ app.get('/', async (req, res) => {
         '--disable-dev-shm-usage'
       ]
     });
-    const page = await browser.newPage();
 
+    const page = await browser.newPage();
     const html = `
       <!DOCTYPE html>
       <html>
@@ -29,17 +27,8 @@ app.get('/', async (req, res) => {
         <meta charset="UTF-8">
         <title>Puppeteer Test</title>
         <style>
-          body { 
-            font-family: Arial, sans-serif; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            height: 100vh; 
-            margin: 0; 
-          }
-          h1 { 
-            color: #0070f3; 
-          }
+          body { font-family: Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+          h1 { color: #0070f3; }
         </style>
       </head>
       <body>
@@ -49,8 +38,7 @@ app.get('/', async (req, res) => {
     `;
 
     await page.setContent(html, { waitUntil: 'networkidle0' });
-    const screenshotPath = './output.png';
-    await page.screenshot({ path: screenshotPath });
+    await page.screenshot({ path: './output.png' });
     await browser.close();
 
     res.send('✅ Screenshot created! Check the file output.png on the server.');
@@ -60,10 +48,10 @@ app.get('/', async (req, res) => {
   }
 });
 
-// Endpoint to download the generated slideshow video.
+// ✅ Updated download endpoint
 app.get('/download', (req, res) => {
-  const file = path.join(__dirname, 'slideshow.mp4');
-  res.download(file, 'slideshow.mp4', (err) => {
+  const file = path.join(__dirname, 'final_video.mp4');
+  res.download(file, 'final_video.mp4', (err) => {
     if (err) {
       console.error("File download error:", err);
       res.status(404).send('File not found');
@@ -71,14 +59,18 @@ app.get('/download', (req, res) => {
   });
 });
 
-// Updated endpoint to trigger the video rendering script.
+// Optional: status check to verify if render is done
+app.get('/status', (req, res) => {
+  const finalPath = path.join(__dirname, 'final_video.mp4');
+  const exists = fs.existsSync(finalPath);
+  res.json({ done: exists });
+});
+
+// Trigger render script
 app.post('/trigger-render', (req, res) => {
   console.log("Received /trigger-render POST request");
 
-  // Define the path for the payload file.
   const payloadFile = path.join(__dirname, 'payload.json');
-
-  // Write the JSON payload from n8n to payload.json
   try {
     fs.writeFileSync(payloadFile, JSON.stringify(req.body, null, 2));
     console.log(`Payload written to ${payloadFile}`);
@@ -87,19 +79,15 @@ app.post('/trigger-render', (req, res) => {
     return res.status(500).send("Failed to write payload.");
   }
 
-  // Immediately respond to the client so n8n doesn't time out.
   res.send({ success: true, message: "Render job queued for processing." });
 
-  // Execute your render script asynchronously using spawn.
   const scriptPath = path.join(__dirname, 'render-video.sh');
   const child = spawn("bash", [scriptPath, payloadFile]);
 
-  // Listen for stdout events.
   child.stdout.on("data", (data) => {
     console.log(`render-video.sh stdout: ${data}`);
   });
 
-  // Listen for stderr events.
   child.stderr.on("data", (data) => {
     console.error(`render-video.sh stderr: ${data}`);
   });
@@ -109,7 +97,7 @@ app.post('/trigger-render', (req, res) => {
   });
 });
 
-// Use the port provided by Render or default to 3000.
+// Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
