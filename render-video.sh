@@ -31,19 +31,30 @@ done
 # Create captions.srt
 jq -r '.captionsSRT' "$PAYLOAD_FILE" > captions.srt
 
-# Build file list
-rm -f fileList.txt
-for img in image*.jpg; do
-  echo "file '$img'" >> fileList.txt
-  echo "duration 10" >> fileList.txt
-done
-LAST_IMG=$(ls image*.jpg | tail -n 1)
-echo "file '$LAST_IMG'" >> fileList.txt
+# Create motion clips from each image
+rm -rf motion_clips
+mkdir motion_clips
 
-# Create slideshow
-ffmpeg -loglevel error -y -f concat -safe 0 -i fileList.txt \
-  -vf "fps=30,scale=in_range=full:out_range=tv,format=yuv420p" \
-  -c:v libx264 -preset medium slideshow.mp4
+DURATION=10
+FPS=30
+RES=1920x1080
+TOTAL_FRAMES=$((DURATION * FPS))
+
+for img in image*.jpg; do
+  BASENAME=$(basename "$img" .jpg)
+  ffmpeg -loglevel error -y -loop 1 -t $DURATION -i "$img" \
+    -vf "zoompan=z='min(zoom+0.0005,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=$TOTAL_FRAMES:s=$RES, fps=$FPS,format=yuv420p" \
+    -c:v libx264 -preset fast "motion_clips/${BASENAME}.mp4"
+done
+
+# Create list for concatenation
+rm -f fileList.txt
+for vid in motion_clips/*.mp4; do
+  echo "file '$vid'" >> fileList.txt
+done
+
+# Concatenate all motion clips
+ffmpeg -loglevel error -y -f concat -safe 0 -i fileList.txt -c copy slideshow.mp4
 
 # Merge voiceover
 if [ -f voiceover.mp3 ]; then
@@ -52,10 +63,10 @@ else
   cp slideshow.mp4 temp_video.mp4
 fi
 
-# Burn subtitles
+# Burn subtitles with Roboto style
 if [ -s captions.srt ]; then
   ffmpeg -loglevel error -y -i temp_video.mp4 \
-    -vf "subtitles=captions.srt:charenc=UTF-8:force_style='FontName=Impact,FontSize=42,PrimaryColour=&H00FFFF00&,OutlineColour=&H00000000&,BackColour=&H64000000&,BorderStyle=1,Outline=3,Shadow=0,Alignment=2,MarginV=50',setpts=PTS-STARTPTS,format=yuv420p" \
+    -vf "subtitles=captions.srt:charenc=UTF-8:force_style='FontName=Roboto,FontSize=48,PrimaryColour=&H00FFFFFF,OutlineColour=&H40000000,BorderStyle=3,Alignment=2,MarginV=60',setpts=PTS-STARTPTS,format=yuv420p" \
     -af "asetpts=PTS-STARTPTS" \
     -c:v libx264 -preset medium -c:a aac -shortest final_video.mp4
 else
@@ -65,4 +76,4 @@ else
     -c:v libx264 -preset medium -c:a aac -shortest final_video.mp4
 fi
 
-echo "SUCCESS: final_video.mp4 created"
+echo "✅ SUCCESS: final_video.mp4 created"
