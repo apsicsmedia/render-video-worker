@@ -3,7 +3,7 @@ echo "DEBUG: render-video.sh script started!"
 
 shopt -s nullglob
 
-# Determine payload file: if a command-line argument is provided, use it; otherwise, default to payload.json.
+# Determine payload file
 if [ -n "$1" ]; then
   if [ -f "$1" ]; then
     PAYLOAD_FILE="$1"
@@ -15,7 +15,6 @@ if [ -n "$1" ]; then
   fi
 else
   PAYLOAD_FILE="payload.json"
-  # Only read from STDIN if no argument is provided.
   echo "DEBUG: No payload argument provided. Checking for piped input..."
   if [ ! -t 0 ]; then
     echo "DEBUG: Piped input detected. Reading stdin to $PAYLOAD_FILE..."
@@ -63,7 +62,7 @@ done
 echo "DEBUG: Finished Step 0."
 
 # -------------------------
-# Step 1: Create captions.srt from the payload file
+# Step 1: Create captions.srt
 # -------------------------
 echo "DEBUG: Starting Step 1: Create captions.srt..."
 jq -r '.captionsSRT' "$PAYLOAD_FILE" > captions.srt
@@ -72,12 +71,11 @@ if [ ! -s captions.srt ]; then
 fi
 echo "DEBUG: Finished Step 1."
 
-# Log the contents of captions.srt for verification.
 echo "DEBUG: Contents of captions.srt:"
 cat captions.srt
 
 # -------------------------
-# Create fileList.txt for FFmpeg
+# Step 2: Create fileList.txt for FFmpeg
 # -------------------------
 echo "DEBUG: Creating fileList.txt..."
 rm -f fileList.txt
@@ -86,90 +84,84 @@ for img in image*.jpg; do
     echo "file '$img'" >> fileList.txt
     echo "duration 10" >> fileList.txt
   else
-    echo "DEBUG: Warning: $img not found or is empty when creating fileList." >&2
+    echo "DEBUG: Warning: $img not found or is empty." >&2
   fi
 done
 
-# Duplicate the last image so the concat demuxer doesn't end abruptly
 LAST_IMG=$(ls image*.jpg 2>/dev/null | tail -n 1)
 if [ -n "$LAST_IMG" ]; then
+  # Repeat the last image to avoid abrupt ending
   echo "file '$LAST_IMG'" >> fileList.txt
 else
-  echo "DEBUG: No valid images found for fileList.txt. Exiting." >&2
+  echo "DEBUG: No valid images found. Exiting." >&2
   exit 1
 fi
 echo "DEBUG: Finished creating fileList.txt."
 
 # -------------------------
-# Step 2: Generate slideshow video from images
+# Step 3: Generate slideshow video
 # -------------------------
-echo "DEBUG: Starting Step 2: Generate slideshow (FFmpeg concat)..."
+echo "DEBUG: Starting Step 3: Generate slideshow..."
 ffmpeg -f concat -safe 0 -i fileList.txt -vf "fps=30,format=yuv420p" -c:v libx264 -preset medium slideshow.mp4
 if [ $? -ne 0 ]; then
-  echo "DEBUG: ERROR during slideshow generation (ffmpeg concat)." >&2
+  echo "DEBUG: ERROR generating slideshow (ffmpeg concat)." >&2
   exit 1
-fi
-echo "DEBUG: Finished Step 2."
-
-# -------------------------
-# Step 3: Merge audio (voiceover) if available.
-# -------------------------
-echo "DEBUG: Starting Step 3: Check for audio..."
-if [ -f voiceover.mp3 ]; then
-  echo "DEBUG: voiceover.mp3 found. Merging audio (FFmpeg merge)..."
-  ffmpeg -i slideshow.mp4 -i voiceover.mp3 -c:v copy -c:a aac -shortest temp_video.mp4
-  if [ $? -ne 0 ]; then
-    echo "DEBUG: ERROR during audio merge (ffmpeg)." >&2
-    exit 1
-  fi
-else
-  echo "DEBUG: Voiceover file (voiceover.mp3) not found, copying slideshow.mp4 to temp_video.mp4."
-  cp slideshow.mp4 temp_video.mp4
 fi
 echo "DEBUG: Finished Step 3."
 
 # -------------------------
-# Step 3.5: Remove container offset (Method #2 remux)
+# Step 4: Merge audio (voiceover) if available -> temp_video.mp4
 # -------------------------
-echo "DEBUG: Step 3.5: Removing offset from temp_video.mp4 via TS remux..."
-ffmpeg -y -i temp_video.mp4 -c copy -bsf:v h264_mp4toannexb -f mpegts intermediate.ts
-if [ $? -ne 0 ]; then
-  echo "DEBUG: ERROR during .ts creation." >&2
-  exit 1
-fi
-
-ffmpeg -y -i intermediate.ts -c copy offset_fixed.mp4
-if [ $? -ne 0 ]; then
-  echo "DEBUG: ERROR remuxing back to offset_fixed.mp4." >&2
-  exit 1
-fi
-echo "DEBUG: offset_fixed.mp4 should now start at 0s."
-echo "DEBUG: Finished Step 3.5."
-
-# -------------------------
-# Step 4: Burn subtitles if an SRT file is available
-# -------------------------
-echo "DEBUG: Starting Step 4: Check for captions..."
-if [ -f captions.srt ] && [ -s captions.srt ]; then
-  echo "DEBUG: captions.srt found. Burning subtitles..."
-  ffmpeg -i offset_fixed.mp4 \
-    -vf "subtitles=captions.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,BorderStyle=4,OutlineColour=&H000000FF,Shadow=0,BackColour=&H80000000,Bold=1'" \
-    -c:a aac -shortest \
-    final_video.mp4
+echo "DEBUG: Starting Step 4: Merge audio if voiceover.mp3 exists..."
+if [ -f voiceover.mp3 ]; then
+  echo "DEBUG: voiceover.mp3 found. Merging..."
+  ffmpeg -i slideshow.mp4 -i voiceover.mp3 -c:v copy -c:a aac -shortest temp_video.mp4
   if [ $? -ne 0 ]; then
-    echo "DEBUG: ERROR during subtitle burn-in (ffmpeg)." >&2
+    echo "DEBUG: ERROR merging audio." >&2
     exit 1
   fi
 else
-  echo "DEBUG: Captions file (captions.srt) not found or empty. Copying offset_fixed.mp4 to final_video.mp4."
-  ffmpeg -i offset_fixed.mp4 -c copy final_video.mp4
+  echo "DEBUG: No voiceover found. Copying slideshow.mp4 to temp_video.mp4."
+  cp slideshow.mp4 temp_video.mp4
 fi
 echo "DEBUG: Finished Step 4."
+
+# -------------------------
+# Step 5: Re-encode so final starts at 0s & optionally burn subtitles
+# -------------------------
+echo "DEBUG: Starting Step 5: Force final to 0s and handle subtitles..."
+
+if [ -f captions.srt ] && [ -s captions.srt ]; then
+  echo "DEBUG: SRT found, burning subtitles with setpts/asetpts re-encode..."
+  ffmpeg -i temp_video.mp4 \
+    -vf "subtitles=captions.srt,setpts=PTS-STARTPTS" \
+    -af "asetpts=PTS-STARTPTS" \
+    -c:v libx264 -preset medium \
+    -c:a aac -shortest \
+    final_video.mp4
+  if [ $? -ne 0 ]; then
+    echo "DEBUG: ERROR during subtitle burn-in re-encode." >&2
+    exit 1
+  fi
+else
+  echo "DEBUG: No valid SRT. We'll still re-encode to ensure 0s start."
+  ffmpeg -i temp_video.mp4 \
+    -vf "setpts=PTS-STARTPTS" \
+    -af "asetpts=PTS-STARTPTS" \
+    -c:v libx264 -preset medium \
+    -c:a aac -shortest \
+    final_video.mp4
+fi
+
+if [ $? -ne 0 ]; then
+  echo "DEBUG: ERROR re-encoding final video." >&2
+  exit 1
+fi
+
+echo "DEBUG: Finished Step 5."
 
 echo "DEBUG: Final video created: final_video.mp4"
 echo "Final video created: final_video.mp4"
 
-# Optional: Clean up intermediate files (uncomment if desired)
-# echo "DEBUG: Cleaning up temporary files..."
-# rm -f image*.jpg captions.srt fileList.txt slideshow.mp4 temp_video.mp4 intermediate.ts offset_fixed.mp4 payload.json
-# echo "DEBUG: Cleanup complete."
+# Optional: Clean up intermediate files (uncomment to enable)
+# rm -f image*.jpg fileList.txt slideshow.mp4 temp_video.mp4 captions.srt payload.json
