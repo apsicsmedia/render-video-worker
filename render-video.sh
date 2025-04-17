@@ -4,8 +4,8 @@
 echo "🔄 Render worker is starting..." >> /app/render-worker.log
 echo "Start time: $(date)" >> /app/render-worker.log
 
-# Create the directory to store logs (if it doesn't exist)
-mkdir -p /app/logs
+# Create the directory to store logs and motion clips (if it doesn't exist)
+mkdir -p /app/logs /app/motion_clips
 
 # Capture the incoming request
 echo "Received request at $(date)" >> /app/render-worker.log
@@ -69,6 +69,9 @@ echo "file '/app/motion_clips/clip1.mp4'" > /app/motion_clips/fileList.txt
 for i in $(seq 2 $INDEX); do
     echo "file '/app/motion_clips/clip$i.mp4'" >> /app/motion_clips/fileList.txt
 done
+
+# Log fileList.txt content
+cat /app/motion_clips/fileList.txt >> /app/render-worker.log
 
 ffmpeg -loglevel info -y -f concat -safe 0 -i /app/motion_clips/fileList.txt -c copy /app/final_video.mp4
 
