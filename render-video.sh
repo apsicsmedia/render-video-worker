@@ -2,14 +2,23 @@
 set -e
 shopt -s nullglob
 
+echo "🚀 Starting render-video.sh..."
+
 # === CONFIG ===
 DURATION=5
 FPS=25
 WIDTH=1280
 HEIGHT=720
-FONT="Roboto"  # fallback to Arial if Roboto isn’t installed
+FONT_FILE="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+echo "🔧 Config:"
+echo "  Duration per image: $DURATION sec"
+echo "  FPS: $FPS"
+echo "  Resolution: ${WIDTH}x${HEIGHT}"
+echo "  Font: $FONT_FILE"
 
 # === PAYLOAD LOAD ===
+echo "📦 Loading payload..."
 if [ -n "$1" ]; then
   if [ -f "$1" ]; then
     PAYLOAD_FILE="$1"
@@ -23,15 +32,19 @@ else
 fi
 
 if [ ! -f "$PAYLOAD_FILE" ]; then echo "❌ Payload missing"; exit 1; fi
+echo "✅ Payload loaded: $PAYLOAD_FILE"
+
 if ! command -v jq &> /dev/null; then echo "❌ jq is required."; exit 1; fi
 
 # === DOWNLOAD IMAGES ===
 echo "🖼️ Downloading images..."
 IMAGE_COUNT=$(jq '.segments | length' "$PAYLOAD_FILE")
+echo "📊 Total segments: $IMAGE_COUNT"
 
 for (( i=0; i<IMAGE_COUNT; i++ )); do
   URL=$(jq -r ".segments[$i].imageURL" "$PAYLOAD_FILE")
   OUTPUT="image$((i+1)).jpg"
+  echo "📥 [${i}] Downloading: $URL → $OUTPUT"
   curl -s -L -o "$OUTPUT" "$URL"
 done
 
@@ -43,35 +56,47 @@ mkdir motion_clips
 for (( i=0; i<IMAGE_COUNT; i++ )); do
   IMG="image$((i+1)).jpg"
   BASENAME=$(basename "$IMG" .jpg)
-  
-  # Get raw caption and escape it for ffmpeg
-  RAW_CAPTION=$(jq -r ".segments[$i].caption" "$PAYLOAD_FILE")
-  ESCAPED_CAPTION=$(echo "$RAW_CAPTION" | sed "s/'/\\\\'/g")
 
-  ffmpeg -loglevel error -y -loop 1 -t $DURATION -i "$IMG" \
+  RAW_CAPTION=$(jq -r ".segments[$i].caption" "$PAYLOAD_FILE")
+  RAW_CAPTION=$(echo "$RAW_CAPTION" | sed 's/:/ -/g; s/&/and/g; s/["'\'']//g' | xargs)
+  CAPTION_FILE="caption$((i+1)).txt"
+  echo "$RAW_CAPTION" > "$CAPTION_FILE"
+
+  echo "📝 [${i}] Caption saved to $CAPTION_FILE: $RAW_CAPTION"
+
+  ffmpeg -loglevel info -y -loop 1 -t $DURATION -i "$IMG" \
     -vf "zoompan=z='zoom+0.0005':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:fps=$FPS, \
          scale=${WIDTH}:${HEIGHT}, \
-         drawtext=font='$FONT':text='$ESCAPED_CAPTION':fontsize=42:fontcolor=white:borderw=1:bordercolor=black:x=(w-text_w)/2:y=h-80, \
+         drawtext=fontfile='$FONT_FILE':textfile='$CAPTION_FILE':fontsize=48:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-line_h-80, \
          format=yuv420p" \
     -c:v libx264 -preset veryfast -t $DURATION "motion_clips/${BASENAME}.mp4"
+
+  echo "✅ Clip created: motion_clips/${BASENAME}.mp4"
 done
 
 # === CONCAT CLIPS ===
-echo "🧵 Concatenating clips..."
+echo "🧵 Concatenating clips into slideshow..."
 rm -f fileList.txt
 for vid in motion_clips/*.mp4; do
   echo "file '$vid'" >> fileList.txt
 done
+cat fileList.txt
 
-ffmpeg -loglevel error -y -f concat -safe 0 -i fileList.txt -c copy slideshow.mp4
+ffmpeg -loglevel info -y -f concat -safe 0 -i fileList.txt -c copy slideshow.mp4
+echo "🎬 Slideshow created: slideshow.mp4"
 
 # === VOICEOVER (optional) ===
 if [ -f voiceover.mp3 ]; then
-  echo "🎙️ Merging voiceover..."
-  ffmpeg -loglevel error -y -i slideshow.mp4 -i voiceover.mp3 -c:v copy -c:a aac -shortest final_video.mp4
+  echo "🎙️ Merging with voiceover..."
+  ffmpeg -loglevel info -y -i slideshow.mp4 -i voiceover.mp3 -c:v copy -c:a aac -shortest final_video.mp4
+  echo "🎧 Final video with audio: final_video.mp4"
 else
-  echo "🎞️ No voiceover found, exporting video only..."
+  echo "🎞️ No voiceover found — using video only."
   cp slideshow.mp4 final_video.mp4
+  echo "📽️ Final video: final_video.mp4"
 fi
 
-echo "✅ SUCCESS: final_video.mp4 created"
+# === CLEANUP (optional) ===
+rm -f caption*.txt
+
+echo "✅ DONE: final_video.mp4 is ready"
