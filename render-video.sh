@@ -56,8 +56,11 @@ for (( i=0; i<$INDEX; i++ )); do
     IMAGE_FILE="/app/images/image$((i+1)).jpg"
     CAPTION=$(echo "$CAPTIONS" | jq -r ".[$i]")
 
+    # Escape any special characters in the caption
+    ESCAPED_CAPTION=$(printf "%q" "$CAPTION")
+
     ffmpeg_command="$ffmpeg_command -loop 1 -t 5 -i $IMAGE_FILE \
-        -vf \"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='$CAPTION':fontsize=48:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-line_h-80\" \
+        -vf \"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='$ESCAPED_CAPTION':fontsize=48:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-line_h-80\" \
         -c:v libx264 -preset veryfast"
 done
 
@@ -66,4 +69,17 @@ OUTPUT_FILE="/app/final_video.mp4"
 ffmpeg_command="$ffmpeg_command $OUTPUT_FILE"
 
 # Run the FFmpeg command to generate the video
-echo "Running
+echo "Running FFmpeg command: $ffmpeg_command" >> /app/render-worker.log
+eval $ffmpeg_command
+
+# Check if the final video is created
+if [ ! -f "$OUTPUT_FILE" ]; then
+    echo "❌ Error: Final video not created!" >> /app/render-worker.log
+    exit 1
+else
+    echo "✅ Final video created: $OUTPUT_FILE" >> /app/render-worker.log
+fi
+
+# Respond with success message
+echo "✅ Render job completed successfully!" >> /app/render-worker.log
+echo "Render job started successfully!"
