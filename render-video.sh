@@ -56,9 +56,10 @@ for (( i=0; i<$INDEX; i++ )); do
     IMAGE_FILE="/app/images/image$((i+1)).jpg"
     CAPTION=$(echo "$CAPTIONS" | jq -r ".[$i]")
 
-    # Escape any special characters in the caption
+    # Escape any special characters in the caption to prevent errors with FFmpeg
     ESCAPED_CAPTION=$(printf "%q" "$CAPTION")
 
+    # Build the FFmpeg command to apply the caption
     ffmpeg_command="$ffmpeg_command -loop 1 -t 5 -i $IMAGE_FILE \
         -vf \"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='$ESCAPED_CAPTION':fontsize=48:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-line_h-80\" \
         -c:v libx264 -preset veryfast"
