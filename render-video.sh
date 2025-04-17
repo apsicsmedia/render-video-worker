@@ -47,7 +47,7 @@ for IMAGE_URL in $IMAGE_URLS; do
     INDEX=$((INDEX+1))
 done
 
-# Use FFmpeg to create a video from the images with captions
+# Prepare FFmpeg input and create video with captions
 echo "🎞️ Creating video from images with captions..." >> /app/render-worker.log
 
 # Generate video using FFmpeg: loop through images and add captions
@@ -59,7 +59,7 @@ for (( i=0; i<$INDEX; i++ )); do
     # Escape any special characters in the caption to prevent errors with FFmpeg
     ESCAPED_CAPTION=$(printf "%q" "$CAPTION")
 
-    # Build the FFmpeg command to apply the caption
+    # Append to the FFmpeg command for each image and caption
     ffmpeg_command="$ffmpeg_command -loop 1 -t 5 -i $IMAGE_FILE \
         -vf \"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='$ESCAPED_CAPTION':fontsize=48:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-line_h-80\" \
         -c:v libx264 -preset veryfast"
